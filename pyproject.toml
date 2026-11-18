@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "letsvibe-reality-check"
+version = "1.0.0"
+description = "Pre-build app idea validator & niche Idea Finder grounded in high-traction GitHub and App Store incumbents."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.115.0",
+  "pydantic>=2.10.0",
+  "uvicorn>=0.32.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["letsvibe_rc*"]
