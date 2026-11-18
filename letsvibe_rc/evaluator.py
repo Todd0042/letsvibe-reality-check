@@ -201,10 +201,17 @@ def evaluate_idea(
     grounding = gather_market_grounding(pitch=pitch, platform=platform, twist=twist)
 
     tone_note = TONE_PROMPTS[tone]
-    repos_txt = "\n".join(
-        f"- {r['full_name']} ({r['stars']} stars, {r['language']}): {r['description']}"
-        for r in (grounding.get("github_top_repos") or [])
-    ) or "(no widely-known >=500-star GitHub incumbents found)"
+    repos = grounding.get("github_top_repos") or []
+    if repos:
+        repos_txt = "\n".join(
+            f"- {r['full_name']} ({r['stars']} stars, {r['language']}): {r['description']}"
+            for r in repos
+        )
+    elif grounding.get("github_rate_limited"):
+        err = grounding.get("github_error") or "GitHub API rate limit exceeded"
+        repos_txt = f"(GitHub search temporarily rate-limited: {err} — rely on domain knowledge & App Store)"
+    else:
+        repos_txt = "(no widely-known >=500-star GitHub incumbents found)"
     app_txt = "\n".join(
         f"- {a['name']} ({a['price']}, {a['rating']}★, {a['reviews']} reviews)"
         for a in (grounding.get("app_store_hits") or [])

@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import threading
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 _STOPWORDS = {
     "a", "an", "the", "and", "or", "for", "with", "that", "this", "from", "into",
@@ -58,29 +62,101 @@ def _get_json(url: str, timeout: float = 4.0) -> Dict[str, Any]:
         return json.loads(resp.read().decode("utf-8", errors="replace") or "{}")
 
 
+_GH_LOCK = threading.Lock()
+_GH_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_GH_COOLDOWN_UNTIL = 0.0
+_GH_CACHE_TTL_SEC = 900.0
+
+
+def clear_github_cache() -> None:
+    """Clears in-memory GitHub search cache and cooldown state."""
+    global _GH_COOLDOWN_UNTIL
+    with _GH_LOCK:
+        _GH_CACHE.clear()
+        _GH_COOLDOWN_UNTIL = 0.0
+
+
+def _github_get_json(url: str, timeout: float = 6.0) -> Tuple[Optional[Dict[str, Any]], bool, str]:
+    """Fetches GitHub JSON with optional token auth, 15-min TTL cache, and rate-limit cooldown."""
+    global _GH_COOLDOWN_UNTIL
+    now = time.time()
+    with _GH_LOCK:
+        cached = _GH_CACHE.get(url)
+        if cached and cached[0] > now:
+            return cached[1], False, ""
+        if _GH_COOLDOWN_UNTIL > now:
+            wait = max(1, int(_GH_COOLDOWN_UNTIL - now))
+            return None, True, f"GitHub API rate limit exceeded (resets in ~{wait}s)."
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "LetsVibe-RealityCheck/1.0 (+https://letsviberc.todd0042.dev)",
+    }
+    token = (os.getenv("LETSVIBE_GITHUB_TOKEN") or os.getenv("GITHUB_TOKEN") or "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # nosec B310 - fixed public GitHub API URL
+            data = json.loads(resp.read().decode("utf-8", errors="replace") or "{}")
+            with _GH_LOCK:
+                _GH_CACHE[url] = (time.time() + _GH_CACHE_TTL_SEC, data)
+            return data, False, ""
+    except urllib.error.HTTPError as exc:
+        if exc.code in (403, 429):
+            hdrs = exc.headers or {}
+            remaining = hdrs.get("X-RateLimit-Remaining")
+            retry_after = hdrs.get("Retry-After")
+            reset_raw = hdrs.get("X-RateLimit-Reset")
+            wait_sec = 60
+            if retry_after and str(retry_after).isdigit():
+                wait_sec = max(5, min(int(retry_after), 3600))
+            elif reset_raw and str(reset_raw).isdigit():
+                wait_sec = max(5, min(int(reset_raw) - int(time.time()), 3600))
+            elif remaining != "0":
+                wait_sec = 60
+            with _GH_LOCK:
+                _GH_COOLDOWN_UNTIL = time.time() + wait_sec
+            return None, True, f"GitHub API rate limit exceeded (resets in ~{wait_sec}s)."
+        return None, False, f"HTTP {exc.code}"
+    except Exception as exc:
+        return None, False, str(exc)
+
+
 def _fetch_github(short_q: str, keywords: List[str]) -> Dict[str, Any]:
     """Fetches only widely-known GitHub repositories (>= 500 stars)."""
-    try:
-        q = urllib.parse.quote_plus(f"{short_q} stars:>=500")
-        gh = _get_json(f"https://api.github.com/search/repositories?q={q}&sort=stars&order=desc&per_page=8")
-        repos = []
-        for item in (gh.get("items") or []):
-            full_name = str(item.get("full_name") or "")
-            desc = str(item.get("description") or "")[:160]
-            stars = int(item.get("stargazers_count") or 0)
-            if stars < 500 or _keyword_overlap_count(f"{full_name} {desc}", keywords) < 1:
-                continue
-            repos.append({
-                "full_name": full_name,
-                "stars": stars,
-                "language": str(item.get("language") or ""),
-                "description": desc,
-            })
-            if len(repos) >= 5:
-                break
-        return {"github_total_count": len(repos), "github_top_repos": repos}
-    except Exception:
-        return {"github_total_count": 0, "github_top_repos": []}
+    q = urllib.parse.quote_plus(f"{short_q} stars:>=500")
+    url = f"https://api.github.com/search/repositories?q={q}&sort=stars&order=desc&per_page=8"
+    gh, rate_limited, error = _github_get_json(url)
+    if rate_limited or gh is None:
+        return {
+            "github_total_count": 0,
+            "github_top_repos": [],
+            "github_rate_limited": rate_limited,
+            "github_error": error,
+        }
+    repos = []
+    for item in (gh.get("items") or []):
+        full_name = str(item.get("full_name") or "")
+        desc = str(item.get("description") or "")[:160]
+        stars = int(item.get("stargazers_count") or 0)
+        if stars < 500 or _keyword_overlap_count(f"{full_name} {desc}", keywords) < 1:
+            continue
+        repos.append({
+            "full_name": full_name,
+            "stars": stars,
+            "language": str(item.get("language") or ""),
+            "description": desc,
+        })
+        if len(repos) >= 5:
+            break
+    return {
+        "github_total_count": len(repos),
+        "github_top_repos": repos,
+        "github_rate_limited": False,
+        "github_error": "",
+    }
 
 
 def _fetch_app_store(short_q: str, platform: str, keywords: List[str]) -> Dict[str, Any]:
@@ -119,6 +195,8 @@ def gather_market_grounding(pitch: str, platform: str = "Web", twist: str = "") 
         "platform": platform,
         "github_total_count": 0,
         "github_top_repos": [],
+        "github_rate_limited": False,
+        "github_error": "",
         "app_store_hits": [],
         "npm_total_count": 0,
         "npm_top_packages": [],

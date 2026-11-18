@@ -147,3 +147,49 @@ def test_idea_finder_3_day_history_and_gate(monkeypatch, tmp_path) -> None:
     assert res["finder_result"]["passed_brutal_gate"] is True
     assert res["finder_result"]["cycles_used"] == 2
     assert (tmp_path / "idea_hist.json").exists()
+
+
+def test_reality_check_e2e_github_rate_limit_graceful_fallback(monkeypatch, tmp_path) -> None:
+    from letsvibe_rc import grounding as rc_grounding
+
+    rc_grounding.clear_github_cache()
+    monkeypatch.setattr(rc_routes, "_store", rc_routes.RealityCheckStore(str(tmp_path / "rc_rl.db")))
+    monkeypatch.setattr(rc_routes, "_RATE_MAX_HITS", 20)
+    monkeypatch.setattr(
+        rc_grounding,
+        "_github_get_json",
+        lambda url, timeout=6.0: (None, True, "GitHub API rate limit exceeded (resets in ~45s)."),
+    )
+    monkeypatch.setattr(rc_grounding, "_fetch_app_store", lambda short_q, platform, keywords: {"app_store_hits": []})
+
+    captured: List[str] = []
+
+    def fake_llama(system_prompt: str, user_prompt: str, max_tokens: int = 4096, temperature: float = 0.25):
+        captured.append(user_prompt)
+        return {
+            "verdict": "NICHE ONLY",
+            "headline": "Rate-limit resilient check",
+            "viability_score": 5.5,
+            "saturation_pct": 45.0,
+            "demand_tier": "Underserved Pain",
+            "dimensions": {"market_saturation": {"label": "Sat", "score": 5.5, "weight": 100, "reasoning": "Fallback"}},
+            "pricing_recommendation": {"suggested_price": "$19", "model": "One-Time License", "reasoning": "Fair"},
+        }
+
+    monkeypatch.setattr(rc_eval, "_call_shared_llama", fake_llama)
+    client = TestClient(app)
+    sub = client.post("/api/rc/evaluate", json={"pitch": "Offline track telemetry logger for Miata drivers", "platform": "Desktop"})
+    assert sub.status_code == 200
+    job_id = sub.json()["job_id"]
+
+    res = None
+    for _ in range(30):
+        jr = client.get(f"/api/rc/job/{job_id}").json()
+        if jr["status"] == "completed":
+            res = jr
+            break
+        time.sleep(0.05)
+    assert res is not None
+    assert len(captured) == 1
+    assert "rate-limited" in captured[0].lower()
+    assert "no widely-known >=500-star github" not in captured[0].lower()
