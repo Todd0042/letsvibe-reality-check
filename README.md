@@ -9,7 +9,7 @@
 # 🧪 LetsVibe: Reality Check & Idea Finder
 
 [![Version](https://img.shields.io/badge/Version-1.0.0-ff2a85.svg)](https://github.com/Todd0042/letsvibe-reality-check)
-[![License: PolyForm Shield](https://img.shields.io/badge/License-PolyForm%20Shield%201.0.0-00f0ff.svg)](LICENSE)
+[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-00f0ff.svg)](LICENSE)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-39ff14.svg)]()
 [![FastAPI + SQLite](https://img.shields.io/badge/Backend-FastAPI%20%2B%20SQLite-teal.svg)]()
 [![Live Site](https://img.shields.io/badge/Live-letsviberc.todd0042.dev-00f0ff.svg)](https://letsviberc.todd0042.dev)
@@ -185,4 +185,4 @@ pytest tests/test_reality_check_e2e.py -v
 ## 8. Companion Apps & Licensing
 
 * **Companion Platform:** [LetsVibe Code Auditor & Leaderboard](https://github.com/Todd0042/letsvibe) (`https://letsvibe.todd0042.dev`)
-* **License:** [PolyForm Shield License 1.0.0](LICENSE) — Copyright © 2026 [Todd0042](https://github.com/Todd0042)
+* **License:** [PolyForm Noncommercial License 1.0.0](LICENSE) — free for personal, hobby, educational, research and nonprofit use; commercial use (inside a company, in a paid product or service, or for profit) requires a separate license from [Todd0042](https://github.com/Todd0042). Copyright © 2026 [Todd0042](https://github.com/Todd0042)
