@@ -186,3 +186,4 @@ pytest tests/test_reality_check_e2e.py -v
 
 * **Companion Platform:** [LetsVibe Code Auditor & Leaderboard](https://github.com/Todd0042/letsvibe) (`https://letsvibe.todd0042.dev`)
 * **License:** [PolyForm Noncommercial License 1.0.0](LICENSE) — free for personal, hobby, educational, research and nonprofit use; commercial use (inside a company, in a paid product or service, or for profit) requires a separate license from [Todd0042](https://github.com/Todd0042). Copyright © 2026 [Todd0042](https://github.com/Todd0042)
+* **Media License**: the images, artwork and audio made for this project (paths listed in [LICENSE-MEDIA](LICENSE-MEDIA)) are © Todd0042 under **[CC BY-NC 4.0](LICENSE-MEDIA)**: free to share and adapt with credit for non-commercial purposes; commercial use requires permission.
